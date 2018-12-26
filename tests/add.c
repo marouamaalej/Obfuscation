@@ -1,3 +1,7 @@
+//RUN: clang -c -emit-llvm add.c -o add.bc
+//RUN: opt -load <PATH_to_Obfuscate0>/Obfuscate.so add.bc -o addObfuscated.bc
+//RUN: llvm-dis addObfuscated.bc
+
 #include<stdio.h>
 #include<stdlib.h>
 
