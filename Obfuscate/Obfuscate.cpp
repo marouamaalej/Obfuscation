@@ -1,5 +1,8 @@
 // We choose in this obfuscation pass to obfuscate recursive calls by adding a conditional branch around the call.
-// The conditional predicate implemented here is a simple comparison between two randomly generated constants.
+// The conditional predicate implemented here is a comparison between two equivalent logic formulas 
+// A \/ (B /\ C) and (A \/ B) \/ (A \/ C). Two of these terms is chosen to be an operand of the recursive call.
+// One is stored in a register and the other in memory. The use of memory access does not change the predicate
+// but is used to add extra complexity since access optimizations cannot be performed without a pointer analysis. 
 // Any more complicated predicate may be used for the purpose.
  
 #include "llvm/Pass.h"
@@ -42,34 +45,53 @@ for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
 	split = &*I;
 
 	// Create a jump block
-	BasicBlock* jumpBlock = BB->BasicBlock::splitBasicBlock(I, "jump before");
+	BasicBlock* jumpBlock = BB->BasicBlock::splitBasicBlock(I, "jump trap");
 	
 	// The call instruction is the first one in the new block. Old iterator being invalidated.
 	Instruction* Inst = &*(jumpBlock->begin());
 	Type* ty = IntegerType::get(BB->getContext(), 32);
 	Instruction *OrigInst = Inst;
+	Value* op = Inst->getOperand(0);
+ 
 
-   	Constant* any1 = ConstantInt::get(ty, 1 + RandAny(Generator));
-	Constant* any2 = ConstantInt::get(ty, 1 + RandAny(Generator));
-	LLVM_DEBUG(dbgs() << "generated any1 " <<  *any1 << "\n");
-	LLVM_DEBUG(dbgs() << "generated any2 " <<  *any2 << "\n");
+   	Constant* any = ConstantInt::get(ty, 1 + RandAny(Generator));
+
+	AllocaInst* memOp = new AllocaInst(ty, 0, "tmp", Inst);
+	AllocaInst* memAny = new AllocaInst(ty, 0, "tmp", Inst);
+	StoreInst* memOpStore = new StoreInst(op, memOp, false, Inst);
+	StoreInst* memAnyStore = new StoreInst(any, memAny, false, Inst);
+
+	LoadInst* loadOp = new LoadInst(memOp, "tmp", Inst);
+	LoadInst* loadAny = new LoadInst(memAny, "tmp", Inst);
+
+	LLVM_DEBUG(dbgs() << "generated any1 " <<  *any << "\n");
 
 	IRBuilder<NoFolder> builder(Inst);
-	Value *comp = builder.CreateICmp(CmpInst::Predicate::ICMP_EQ, any1, any2);
-	   
+
+	Value* tmp0 = builder.CreateAnd(loadOp, loadAny); // loadOp /\ loadAny
+	Value* rhs = builder.CreateOr(op, tmp0); // op \/ (loadOp /\ loadAny)
+
+	Value* lhsTerm0 = builder.CreateOr(op, loadOp); //op \/ loadOp
+	Value* lhsTerm1 = builder.CreateOr(op, loadAny); //op \/ loadAny
+
+	Value* lhs = builder.CreateAnd(lhsTerm0, lhsTerm1); //(op \/ loadOp) /\ (op \/ loadAny)
+	Value* comp = builder.CreateICmp(CmpInst::Predicate::ICMP_NE, lhs, rhs);
+
 	TerminatorInst *ThenTerm = nullptr, *ElseTerm = nullptr;
   	SplitBlockAndInsertIfThenElse(comp, Inst, &ThenTerm, &ElseTerm);
 
-	BasicBlock *ThenBlock = ThenTerm->getParent();
-	BasicBlock *ElseBlock = ElseTerm->getParent();
-	BasicBlock *MergeBlock = OrigInst->getParent();
+	BasicBlock* ThenBlock = ThenTerm->getParent();
+	BasicBlock* ElseBlock = ElseTerm->getParent();
+	BasicBlock* MergeBlock = OrigInst->getParent();
 
 	ThenBlock->setName("if.true");
 	ElseBlock->setName("if.false");
 	MergeBlock->setName("if.end.icp");
+
+	builder.SetInsertPoint(ThenTerm);
 	
 	ThenTerm->eraseFromParent();
-	BranchInst::Create (jumpBlock, ThenBlock); 
+	BranchInst::Create (jumpBlock, ThenBlock);
 
 	break;
 
