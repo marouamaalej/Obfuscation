@@ -6,7 +6,6 @@
 
 rm *.bc *.ll
 
-fullfilename="/etc/apache2/apache2.conf"
 filename=$(basename $1)
 fname="${filename%.*}"
 
