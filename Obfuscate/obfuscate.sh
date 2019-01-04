@@ -10,13 +10,9 @@ fullfilename="/etc/apache2/apache2.conf"
 filename=$(basename $1)
 fname="${filename%.*}"
 
-fnamebc=$fname'.bc'
 fnameO3=$fname'O3'
 fnameObfuscated=$fname'Obfuscated'
 fnameObfuscatedO3=$fname'ObfuscatedO3'
-
-fnameObfuscatedbc=$fname'Obfuscated.bc'
-fnameObfuscatedO3bc=$fname'ObfuscatedO3.bc'
 
 `clang -c -emit-llvm $1 -o $fname.bc`
 `opt -load <Path_to_llvm>/build/lib/Obfuscate.so -obfuscate $fname.bc -o $fnameObfuscated.bc`
