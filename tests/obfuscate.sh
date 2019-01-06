@@ -14,7 +14,7 @@ fnameObfuscated=$fname'Obfuscated'
 fnameObfuscatedO3=$fname'ObfuscatedO3'
 
 `clang -c -emit-llvm -Xclang -disable-O0-optnone $1 -o $fname.bc` 
-`opt -load /home/mmaalej/llvm/llvm-7.0.0/build/lib/Obfuscate.so -obfuscate $fname.bc -o $fnameObfuscated.bc`
+`opt -load <Path_to_llvm>/build/lib/Obfuscate.so -obfuscate $fname.bc -o $fnameObfuscated.bc`
 
 `llvm-dis $fnameObfuscated.bc`
 `llvm-dis $fname.bc`
