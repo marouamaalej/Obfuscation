@@ -1,6 +1,6 @@
 // We choose in this obfuscation pass to obfuscate recursive calls by adding a conditional branch around the call.
 // The conditional predicate implemented here is a comparison between two equivalent logic formulas 
-// A \/ (B /\ C) and (A \/ B) \/ (A \/ C). Two of these terms is chosen to be an operand of the recursive call.
+// [(not (op \/ any1)) /\  not (any2)] and [not (op \/ any1 \/ any2)]. One of these terms is chosen to be an operand of the recursive call.
 // One is stored in a register and the other in memory. The use of memory access does not change the predicate
 // but is used to add extra complexity since access optimizations cannot be performed without a pointer analysis. 
 // Any more complicated predicate may be used for the purpose.
@@ -24,12 +24,13 @@ using namespace llvm;
 
 
 namespace {
+
+
   class Obfuscate : public FunctionPass {
   std::default_random_engine Generator;
   public:
     static char ID;
     Obfuscate() : FunctionPass(ID) {}
-
 
   // RunOnFunction pass used because the program may not have only SESE blocks (also avoid using the RGPassManager interface).
   bool runOnFunction(Function &F) override {
@@ -54,28 +55,28 @@ for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
 	Value* op = Inst->getOperand(0);
  
 
-   	Constant* any = ConstantInt::get(ty, 1 + RandAny(Generator));
+   	Constant* any1 = ConstantInt::get(ty, 1 + RandAny(Generator));
+	Constant* any2 = ConstantInt::get(ty, 1 + RandAny(Generator));
+	Constant* one = ConstantInt::get(ty, 1);
 
-	AllocaInst* memOp = new AllocaInst(ty, 0, "tmp", Inst);
-	AllocaInst* memAny = new AllocaInst(ty, 0, "tmp", Inst);
-	StoreInst* memOpStore = new StoreInst(op, memOp, false, Inst);
-	StoreInst* memAnyStore = new StoreInst(any, memAny, false, Inst);
 
-	LoadInst* loadOp = new LoadInst(memOp, "tmp", Inst);
-	LoadInst* loadAny = new LoadInst(memAny, "tmp", Inst);
+	IRBuilder<> builder(Inst);
 
-	LLVM_DEBUG(dbgs() << "generated any1 " <<  *any << "\n");
+	// lhs
+	Value *LhsOr = builder.CreateOr(op, any1); // op \/ any1
+	Value *LhsOrNot = builder.CreateXor(LhsOr, one); // not (op \/ any1)
+	Value *Any2Not = builder.CreateXor(any2, one); // not (any2)
+	Value *LhsOrNotAnd = builder.CreateAnd(LhsOrNot, Any2Not); // (not (op \/ any1)) /\  not (any2)
+	Value *Any1Not = builder.CreateXor(any1, one); // not (any1)
+    
+	Value *LhsTot = builder.CreateAnd(LhsOrNotAnd, Any1Not);
 
-	IRBuilder<NoFolder> builder(Inst);
+	// rhs
+	Value *RhsOr = builder.CreateOr(op, any1); // op \/ any1
+	Value *RhsOr2 = builder.CreateOr(RhsOr, any2); // op \/ any1 \/ any2
+	Value *RhsTot = builder.CreateXor(RhsOr2, one); // not (op \/ any1 \/ any2)
 
-	Value* tmp0 = builder.CreateAnd(loadOp, loadAny); // loadOp /\ loadAny
-	Value* rhs = builder.CreateOr(op, tmp0); // op \/ (loadOp /\ loadAny)
-
-	Value* lhsTerm0 = builder.CreateOr(op, loadOp); //op \/ loadOp
-	Value* lhsTerm1 = builder.CreateOr(op, loadAny); //op \/ loadAny
-
-	Value* lhs = builder.CreateAnd(lhsTerm0, lhsTerm1); //(op \/ loadOp) /\ (op \/ loadAny)
-	Value* comp = builder.CreateICmp(CmpInst::Predicate::ICMP_NE, lhs, rhs);
+	Value* comp = builder.CreateICmp(CmpInst::Predicate::ICMP_NE, LhsTot, RhsTot);
 
 	TerminatorInst *ThenTerm = nullptr, *ElseTerm = nullptr;
   	SplitBlockAndInsertIfThenElse(comp, Inst, &ThenTerm, &ElseTerm);
