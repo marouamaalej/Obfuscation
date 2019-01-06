@@ -1,6 +1,6 @@
-//RUN: clang -c -emit-llvm fact.c -o fact.bc
-//RUN: opt -load <PATH_to_Obfuscate0>/Obfuscate.so fact.bc -o factObfuscated.bc
-//RUN: llvm-dis factObfuscated.bc
+//RUN: ./obfuscate.sh fact.c
+//RUN: ./fact 0; check that 0! = 1
+//RUN: ./fact n; check the result
 
 #include<stdio.h>
 #include<stdlib.h>
