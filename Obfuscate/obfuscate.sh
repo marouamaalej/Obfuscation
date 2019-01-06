@@ -13,11 +13,14 @@ fnameO3=$fname'O3'
 fnameObfuscated=$fname'Obfuscated'
 fnameObfuscatedO3=$fname'ObfuscatedO3'
 
-`clang -c -emit-llvm $1 -o $fname.bc`
-`opt -load <Path_to_llvm>/build/lib/Obfuscate.so -obfuscate $fname.bc -o $fnameObfuscated.bc`
+`clang -c -emit-llvm -Xclang -disable-O0-optnone $1 -o $fname.bc` 
+`opt -load /home/mmaalej/llvm/llvm-7.0.0/build/lib/Obfuscate.so -obfuscate $fname.bc -o $fnameObfuscated.bc`
 
-`llvm-dis $fnameObfuscatedbc`
+`llvm-dis $fnameObfuscated.bc`
 `llvm-dis $fname.bc`
+
+sed -i '1d' $fnameObfuscated.ll
+sed -i '1d' $fname.ll
 
 echo "Checking if the original and obfuscated files are the same based on the generated .ll files..."
 if cmp -s $fname.ll $fnameObfuscated.ll; then
@@ -31,6 +34,9 @@ fi
 
 `llvm-dis $fnameO3.bc`
 `llvm-dis $fnameObfuscatedO3.bc`
+
+sed -i '1d' $fnameO3.ll
+sed -i '1d' $fnameObfuscatedO3.ll
 
 echo "Checking if the optimized original and optimized obfuscated files are the same based on the generated .ll files..."
 if cmp -s $fnameObfuscatedO3.ll $fnameO3.ll; then
